@@ -22,7 +22,7 @@ function setStatus(text) { $("status").textContent = text; }
 function showError(text) { $("error").textContent = text; $("error").hidden = false; }
 
 async function init() {
-  if (!range.from_surah) return showError("No surah selected. Open this page with ?from_surah=…&to_surah=…");
+  if (!range.from_surah) return showPicker();
   $("hide").checked = params.get("hide") === "1";
   $("hide").onchange = () => $("passage").classList.toggle("hidden-text", $("hide").checked);
   $("hide").onchange();
@@ -34,6 +34,29 @@ async function init() {
   renderPassage(await res.json());
   $("record").disabled = false;
   setStatus("Press start, then recite.");
+}
+
+// Opened without a range (e.g. directly, not from the portal): let the user pick one.
+async function showPicker() {
+  const surahs = await (await fetch("/api/surahs")).json();
+  const options = surahs.map((s) => `<option value="${s.n}">${s.n} · ${s.name_en} · ${s.name_ar}</option>`).join("");
+  $("p-from").innerHTML = options;
+  $("p-to").innerHTML = options;
+  $("p-from").onchange = () => {
+    if (+$("p-to").value < +$("p-from").value) $("p-to").value = $("p-from").value;
+  };
+  $("picker").onsubmit = (e) => {
+    e.preventDefault();
+    const q = new URLSearchParams({ from_surah: $("p-from").value, to_surah: $("p-to").value });
+    if (+$("p-from-ayah").value > 1) q.set("from_ayah", $("p-from-ayah").value);
+    if ($("p-to-ayah").value) q.set("to_ayah", $("p-to-ayah").value);
+    if ($("p-hide").checked) q.set("hide", "1");
+    location.search = q;
+  };
+  $("passage").hidden = true;
+  for (const id of ["upload-btn", "record", "hide-toggle"]) $(id).hidden = true;
+  $("picker").hidden = false;
+  setStatus("Choose the surahs to recite.");
 }
 
 function renderPassage(p) {

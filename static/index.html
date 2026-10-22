@@ -15,11 +15,21 @@
       <h1 id="title">Recite</h1>
       <p id="subtitle" class="muted"></p>
     </div>
-    <label class="toggle"><input type="checkbox" id="hide"> Hide text</label>
+    <label class="toggle" id="hide-toggle"><input type="checkbox" id="hide"> Hide text</label>
   </header>
 
   <main>
     <section id="error" class="card error" hidden></section>
+
+    <form id="picker" class="card picker" hidden>
+      <h2>What will you recite?</h2>
+      <label>From surah <select id="p-from" required></select></label>
+      <label>From ayah <input id="p-from-ayah" type="number" min="1" value="1"></label>
+      <label>To surah <select id="p-to" required></select></label>
+      <label>To ayah <input id="p-to-ayah" type="number" min="1" placeholder="end"></label>
+      <label class="toggle"><input type="checkbox" id="p-hide"> Hide text (memorization test)</label>
+      <button class="btn primary" type="submit">Start</button>
+    </form>
 
     <section id="summary" class="card" hidden>
       <div class="summary-head">
