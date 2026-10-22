@@ -1,0 +1,5 @@
+torch==2.14.1
+transformers==5.20.2
+librosa==1.0.0
+soundfile==0.14.0
+gradio==6.30.0
