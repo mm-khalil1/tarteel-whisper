@@ -1,0 +1,53 @@
+<!doctype html>
+<!--
+  Minimal stand-in for the Quran portal: a "Recite" button that opens the
+  recitation page in a dialog and receives the result.
+
+  Try it locally:
+    PORTAL_ORIGIN=http://localhost:8001 uvicorn recite.server:app --port 8000
+    python -m http.server 8001 --directory examples
+    open http://localhost:8001/portal-demo.html
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Portal demo</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; margin: 24px; background: #f3f4f7; }
+    dialog { width: min(820px, 100vw - 16px); height: min(90vh, 900px); padding: 0; border: 0; border-radius: 14px; }
+    dialog iframe { width: 100%; height: 100%; border: 0; }
+    pre { background: #fff; padding: 12px; border-radius: 10px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Record home practice</h1>
+  <label>From surah <input id="from" type="number" value="112" min="1" max="114"></label>
+  <label>To surah <input id="to" type="number" value="114" min="1" max="114"></label>
+  <button id="recite">Recite</button>
+  <h2>Result received</h2>
+  <pre id="out">—</pre>
+
+  <dialog id="dlg"><iframe id="frame" allow="microphone"></iframe></dialog>
+
+  <script>
+    const RECITE_ORIGIN = "http://localhost:8000";
+
+    document.getElementById("recite").onclick = () => {
+      const q = new URLSearchParams({
+        from_surah: document.getElementById("from").value,
+        to_surah: document.getElementById("to").value,
+      });
+      document.getElementById("frame").src = `${RECITE_ORIGIN}/?${q}`;
+      document.getElementById("dlg").showModal();
+    };
+
+    window.addEventListener("message", (e) => {
+      if (e.origin !== RECITE_ORIGIN || e.data?.type !== "recitation:result") return;
+      document.getElementById("dlg").close();
+      // In the portal: save e.data.result with the home-practice log entry.
+      document.getElementById("out").textContent = JSON.stringify(e.data.result, null, 2);
+    });
+  </script>
+</body>
+</html>

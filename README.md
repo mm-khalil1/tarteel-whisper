@@ -1,44 +1,121 @@
 # tarteel-whisper
 
-A small demo of [`tarteel-ai/whisper-base-ar-quran`](https://huggingface.co/tarteel-ai/whisper-base-ar-quran),
-a Whisper-base model fine-tuned for Quran recitation (Arabic ASR).
+A Quran recitation checker for the Quran portal. A student opens it for the
+surahs they practised, recites, and sees every word marked **correct**,
+**wrong** or **missed**, with mistakes and points per mushaf page. The result is
+handed back to the portal to save with the home-practice log.
 
-## Setup (Windows)
+Speech recognition uses [`tarteel-ai/whisper-base-ar-quran`](https://huggingface.co/tarteel-ai/whisper-base-ar-quran).
+Quran text and page numbers come from the [Quran.com API](https://api-docs.quran.com/).
+
+## How it works
+
+1. The portal opens the recite page with the selected range, e.g. `/?from_surah=63&to_surah=64`.
+2. The page shows the ayat (Uthmani script, page breaks) and records the student.
+   The browser converts the recording to 16 kHz WAV, so the server needs no ffmpeg.
+3. The server transcribes the audio and aligns the transcript word by word with
+   the expected ayat. Harakat are ignored, because the model isn't reliable on
+   them. Only the words are compared.
+4. Each word is marked: `correct`, `wrong` (a different word was heard) or `missed`.
+   Words heard but not expected (basmala, isti'adha, a phrase repeated to
+   self-correct) are reported as *extras* and **not** counted as mistakes.
+5. Points per page: 0 mistakes → 3, 1–2 → 2, more → 1, and 0 if most of the page
+   wasn't recited. The thresholds are in [`recite/scoring.py`](recite/scoring.py).
+
+**What it can't check:** tajweed (madd, ghunnah, makharij) and harakat mistakes.
+
+## Run locally (Windows)
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+uvicorn recite.server:app --port 8000
 ```
 
-The model (~290 MB) downloads from Hugging Face on first run and is cached.
-
-### Optional: GPU
-
-`pip install torch` gives the CPU build on Windows. For an NVIDIA GPU, install the CUDA build instead:
-
-```bash
-pip install torch --index-url https://download.pytorch.org/whl/cu126
-```
-
-## Usage
+Open http://localhost:8000/?from_surah=112&to_surah=114. The model (~290 MB)
+downloads on first use. Microphone access needs `localhost` or HTTPS.
 
 Command line:
 
 ```bash
-python transcribe.py path/to/recitation.wav
+python transcribe.py recitation.mp3 --surah 67
 ```
 
-Web demo (microphone or file upload):
+Tests: `pytest`
+
+## Integrating with the portal
+
+Set `PORTAL_ORIGIN` to the portal's origin (e.g. `https://quran.muslimwellness.ca`).
+That allows the portal to embed the page in an iframe, call the API, and
+receive results.
+
+**Open it** from a "Recite" button, in an iframe (dialog) or a new window:
+
+```html
+<iframe src="https://recite.example.org/?from_surah=63&to_surah=64" allow="microphone"></iframe>
+```
+
+| Query parameter | |
+|---|---|
+| `from_surah`, `to_surah` | Surah range (required; `to_surah` defaults to `from_surah`) |
+| `from_ayah`, `to_ayah` | Optional ayah limits within the first / last surah |
+| `hide=1` | Start with the text hidden (memorization test) |
+
+**Receive the result.** When the student presses *Done*, the page posts a message to the portal:
+
+```js
+window.addEventListener("message", (e) => {
+  if (e.origin !== "https://recite.example.org" || e.data?.type !== "recitation:result") return;
+  saveHomePractice(e.data.result);
+});
+```
+
+```json
+{
+  "range": { "from_surah": 112, "to_surah": 112, "from_ayah": 1, "to_ayah": null },
+  "duration_s": 21.7,
+  "total_words": 15,
+  "total_mistakes": 0,
+  "total_points": 3,
+  "max_points": 3,
+  "pages": [{ "page": 604, "words": 15, "wrong": 0, "missed": 0, "mistakes": 0, "points": 3 }],
+  "mistakes": [{ "surah": 112, "ayah": 4, "position": 2, "page": 604, "text": "يَكُن", "status": "wrong", "heard": "…" }]
+}
+```
+
+[`examples/portal-demo.html`](examples/portal-demo.html) is a minimal working stand-in for the portal side.
+
+> The result comes from the student's browser, so treat the points as practice
+> feedback. If points become rewards that matter, have the portal's backend call
+> `POST /api/check` itself (below) rather than trusting the posted message.
+
+### API
+
+| Endpoint | |
+|---|---|
+| `GET /api/passage?from_surah=&to_surah=[&from_ayah=&to_ayah=]` | Ayat with words (Uthmani) and page numbers |
+| `POST /api/check` (multipart: `audio` + same range fields) | Transcript, per-word results, extras, per-page mistakes and points |
+| `GET /api/surahs` | Surah names and ayah counts |
+| `GET /api/health` | Health check |
+
+Audio can be wav, flac, ogg or mp3 (≤ 25 MB, configurable via `MAX_AUDIO_MB`).
+
+## Deploying
 
 ```bash
-python app.py
+docker build -t tarteel-whisper .
+docker run -p 8000:8000 -e PORTAL_ORIGIN=https://quran.muslimwellness.ca tarteel-whisper
 ```
 
-Then open http://127.0.0.1:7860.
+Put it behind HTTPS (required for the microphone), e.g. at `recite.muslimwellness.ca`.
 
-## Notes
+**Speed:** on a laptop CPU, checking takes about half the recitation's length
+(7.6 min of Surah Al-Mulk took 3.9 min). A GPU makes this several times faster.
 
-- Audio is resampled to 16 kHz mono. Audio longer than 30 s is split into 30 s chunks.
-- Output is Arabic text with diacritics (tashkeel).
-- Like all Whisper models, it can hallucinate text on silence or non-speech audio.
+**Privacy:** recordings are processed in memory and not stored.
+
+## Data
+
+`data/quran.json` is generated by [`scripts/build_quran_data.py`](scripts/build_quran_data.py)
+(all 114 surahs: each word in Uthmani and imlaei spelling with its Madani mushaf page).

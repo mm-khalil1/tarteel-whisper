@@ -7,3 +7,4 @@ __pycache__/
 *.flac
 *.ogg
 *.m4a
+.pytest_cache/

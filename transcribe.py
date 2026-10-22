@@ -1,59 +1,49 @@
-"""Transcribe Quran recitation audio with tarteel-ai/whisper-base-ar-quran.
+"""Transcribe a recitation, and optionally check it against the Quran.
 
 Usage:
-    python transcribe.py path/to/recitation.wav
+    python transcribe.py recitation.mp3                  # just the transcript
+    python transcribe.py recitation.mp3 --surah 67       # check against Al-Mulk
+    python transcribe.py recitation.mp3 --surah 112 --to-surah 114
 """
 
 import argparse
+import json
 import sys
+from pathlib import Path
 
-import librosa
-import torch
-from transformers import GenerationConfig, WhisperForConditionalGeneration, WhisperProcessor
-
-MODEL_ID = "tarteel-ai/whisper-base-ar-quran"
-BASE_MODEL_ID = "openai/whisper-base"
-SAMPLE_RATE = 16_000  # Whisper expects 16 kHz mono audio
-
-
-def load_model(device: str):
-    processor = WhisperProcessor.from_pretrained(MODEL_ID)
-    model = WhisperForConditionalGeneration.from_pretrained(MODEL_ID).to(device)
-    # The checkpoint ships an old generation config that doesn't support
-    # `language=`/`task=`; use the one from the base model it was fine-tuned from.
-    model.generation_config = GenerationConfig.from_pretrained(BASE_MODEL_ID)
-    model.eval()
-    return processor, model
-
-
-def transcribe(audio, processor, model, device: str) -> str:
-    """Transcribe a 16 kHz mono float array. Whisper sees at most 30 s per call,
-    so longer audio is split into 30 s chunks and the results joined."""
-    chunk = 30 * SAMPLE_RATE
-    texts = []
-    for start in range(0, len(audio), chunk):
-        segment = audio[start : start + chunk]
-        inputs = processor(segment, sampling_rate=SAMPLE_RATE, return_tensors="pt")
-        features = inputs.input_features.to(device)
-        with torch.no_grad():
-            ids = model.generate(features, language="ar", task="transcribe")
-        texts.append(processor.batch_decode(ids, skip_special_tokens=True)[0].strip())
-    return " ".join(t for t in texts if t)
+from recite import asr, quran
+from recite.checker import check
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("audio", help="Path to an audio file (wav, flac, mp3, ogg, ...)")
+    parser.add_argument("audio", help="Path to an audio file (wav, flac, ogg, mp3)")
+    parser.add_argument("--surah", type=int, help="Surah to check against")
+    parser.add_argument("--to-surah", type=int, help="Last surah of the range (default: --surah)")
+    parser.add_argument("--json", action="store_true", help="Print the full check result as JSON")
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")  # Windows consoles default to cp1252
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Loading {MODEL_ID} on {device}...")
-    processor, model = load_model(device)
+    print(f"Loading {asr.MODEL_ID} on {asr.device()}...", file=sys.stderr)
+    audio = asr.load_audio(Path(args.audio).read_bytes())
+    print(f"Audio length: {len(audio) / asr.SAMPLE_RATE:.1f} s", file=sys.stderr)
+    transcript = asr.transcribe(audio)
+    if not args.surah:
+        print(transcript)
+        return
 
-    audio, _ = librosa.load(args.audio, sr=SAMPLE_RATE, mono=True)
-    print(f"Audio length: {len(audio) / SAMPLE_RATE:.1f} s\n")
-    print(transcribe(audio, processor, model, device))
+    result = check(quran.passage(args.surah, args.to_surah or args.surah), transcript)
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    print(transcript, "\n")
+    for w in result["words"]:
+        if w["status"] != "correct":
+            heard = f" (heard {w['heard']})" if "heard" in w else ""
+            print(f"  {w['surah']}:{w['ayah']} word {w['position']}: {w['status']} {w['text']}{heard}")
+    for p in result["pages"]:
+        print(f"Page {p['page']}: {p['mistakes']} mistakes -> {p['points']} points")
+    print(f"Total: {result['total_mistakes']} mistakes, {result['total_points']}/{result['max_points']} points")
 
 
 if __name__ == "__main__":

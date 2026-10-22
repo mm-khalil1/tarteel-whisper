@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recite</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Amiri+Quran&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/recite.css">
+</head>
+<body>
+  <header class="bar">
+    <div>
+      <h1 id="title">Recite</h1>
+      <p id="subtitle" class="muted"></p>
+    </div>
+    <label class="toggle"><input type="checkbox" id="hide"> Hide text</label>
+  </header>
+
+  <main>
+    <section id="error" class="card error" hidden></section>
+
+    <section id="summary" class="card" hidden>
+      <div class="summary-head">
+        <div>
+          <div class="big" id="sum-mistakes"></div>
+          <div class="muted" id="sum-detail"></div>
+        </div>
+        <div class="points" id="sum-points"></div>
+      </div>
+      <div id="sum-pages" class="pages"></div>
+      <div class="legend">
+        <span class="w-correct">Correct</span>
+        <span class="w-wrong">Wrong word</span>
+        <span class="w-missed">Missed</span>
+        <span class="extra-mark">+</span> Extra (not counted)
+      </div>
+    </section>
+
+    <article id="passage" class="card mushaf" dir="rtl" lang="ar"></article>
+  </main>
+
+  <footer class="controls">
+    <div id="status" class="muted">Loading…</div>
+    <div class="buttons">
+      <label class="btn ghost" id="upload-btn">Upload<input type="file" id="upload" accept="audio/*" hidden></label>
+      <button class="btn primary" id="record" disabled>
+        <span class="dot"></span><span id="record-label">Start reciting</span>
+      </button>
+      <button class="btn ghost" id="done" hidden>Done</button>
+    </div>
+  </footer>
+
+  <script src="/static/recite.js"></script>
+</body>
+</html>
